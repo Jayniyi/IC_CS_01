@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-2xl font-semibold mb-6">🧠 Scan History</h2>
+
+{% if scans %}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+  
+  <!-- Chart Section -->
+  <div class="card">
+    <h3 class="text-lg font-semibold mb-3">Vulnerability Summary</h3>
+    <canvas id="vulnChart" height="150"></canvas>
+  </div>
+
+  <!-- Table Section -->
+  <div class="card overflow-x-auto">
+    <h3 class="text-lg font-semibold mb-3">Recent Scans</h3>
+    <table class="min-w-full border border-gray-200">
+      <thead class="bg-blue-600 text-white">
+        <tr>
+          <th class="py-2 px-4 text-left">Target</th>
+          <th class="py-2 px-4 text-left">SQLi</th>
+          <th class="py-2 px-4 text-left">XSS</th>
+          <th class="py-2 px-4 text-left">Links</th>
+          <th class="py-2 px-4 text-left">Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for scan in scans %}
+        <tr class="border-b hover:bg-gray-50">
+          <td class="py-2 px-4 truncate max-w-[200px]">{{ scan.target }}</td>
+          <td class="py-2 px-4 {% if scan.sql_vuln %}text-red-600{% else %}text-green-600{% endif %}">
+            {{ 'Yes' if scan.sql_vuln else 'No' }}
+          </td>
+          <td class="py-2 px-4 {% if scan.xss_vuln %}text-red-600{% else %}text-green-600{% endif %}">
+            {{ 'Yes' if scan.xss_vuln else 'No' }}
+          </td>
+          <td class="py-2 px-4">{{ scan.total_links }}</td>
+          <td class="py-2 px-4 text-gray-500 text-sm">{{ scan.date_scanned.strftime("%Y-%m-%d %H:%M") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<canvas 
+  id="vulnChart" 
+  data-sql="{{ scans|selectattr('sql_vuln')|list|length }}"
+  data-xss="{{ scans|selectattr('xss_vuln')|list|length }}"
+  data-total="{{ scans|length }}"
+  height="150">
+</canvas>
+
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+
+<!-- Chart.js Script -->

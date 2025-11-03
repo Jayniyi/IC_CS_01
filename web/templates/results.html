@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Web Vulnerability Scanner — Results</title>
+
+  <!-- Tailwind via CDN (good for dev) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-5xl mx-auto p-6">
+  <header class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-semibold">Web Vulnerability Scanner</h1>
+    <div class="flex gap-4 items-center">
+      <a href="/history" class="text-sm text-sky-600 hover:underline">History</a>
+      <a href="/" class="text-sm text-slate-500 hover:underline">New scan</a>
+    </div>
+  </header>
+
+  <!-- Scan form -->
+  <section class="bg-white rounded-lg shadow p-5 mb-6">
+    <form id="scanForm" method="post" class="flex gap-2">
+      <input name="url" id="urlInput" required
+             placeholder="Enter target URL (http://example.com)"
+             class="flex-1 border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-300"
+             value="{{ result.target if result and result.target else '' }}" />
+      <button id="scanBtn" type="submit" class="bg-sky-600 text-white px-4 py-2 rounded hover:bg-sky-700 flex items-center gap-2">
+        <svg id="spinner" class="w-4 h-4 animate-spin hidden" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="4" stroke-linecap="round" stroke-dasharray="60" stroke-dashoffset="0" fill="none"/></svg>
+        <span id="scanBtnText">Scan</span>
+      </button>
+    </form>
+    <p class="text-xs text-slate-400 mt-2">Tip: only scan websites you own or have permission to test.</p>
+  </section>
+
+  {% if result %}
+  <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white p-4 rounded shadow">
+      <h3 class="text-sm text-slate-500">Target</h3>
+      <p class="font-medium break-words">{{ result.target }}</p>
+    </div>
+
+    <div class="bg-white p-4 rounded shadow">
+      <h3 class="text-sm text-slate-500">Total links scanned</h3>
+      <p id="totalLinks" class="text-2xl font-bold">{{ result.total_links }}</p>
+    </div>
+
+    <div class="bg-white p-4 rounded shadow">
+      <h3 class="text-sm text-slate-500">Quick findings</h3>
+      <div class="flex flex-col gap-2 mt-2">
+        <span class="text-sm">SQL Injection:
+          <strong class="ml-2 {{ 'text-red-600' if result.sql_vuln else 'text-green-600' }}">
+            {{ 'VULNERABLE' if result.sql_vuln else 'Not found' }}
+          </strong>
+        </span>
+        <span class="text-sm">Reflected XSS:
+          <strong class="ml-2 {{ 'text-red-600' if result.xss_vuln else 'text-green-600' }}">
+            {{ 'VULNERABLE' if result.xss_vuln else 'Not found' }}
+          </strong>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Chart + headers -->
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <div class="bg-white p-4 rounded shadow">
+      <h2 class="text-lg font-semibold mb-3">Vulnerability Summary</h2>
+      <!-- Chart canvas: data-* attrs used by static/js/charts.js -->
+      <canvas id="vulnChart"
+              data-sql="{{ result.details | selectattr('sqli_bool') | list | length }}"
+              data-xss="{{ result.details | selectattr('xss_bool') | list | length }}"
+              data-total="{{ (result.details | length) if result.details else 0 }}"
+              height="140"></canvas>
+      <p class="text-xs text-slate-500 mt-2">Vulnerabilities found in scanned pages.</p>
+    </div>
+
+    <div class="bg-white p-4 rounded shadow">
+      <h2 class="text-lg font-semibold mb-3">Security Headers</h2>
+      <div class="space-y-2 text-sm">
+        {% set h = result.headers or {} %}
+        <div class="flex justify-between"><span>CSP</span><span class="{{ 'text-red-600' if not h.get('Content-Security-Policy') and not h.get('CSP') else 'text-green-600' }}">{{ 'Missing' if not (h.get('Content-Security-Policy') or h.get('CSP')) else 'Present' }}</span></div>
+        <div class="flex justify-between"><span>HSTS</span><span class="{{ 'text-green-600' if h.get('Strict-Transport-Security') or h.get('HSTS') else 'text-red-600' }}">{{ 'Present' if (h.get('Strict-Transport-Security') or h.get('HSTS')) else 'Missing' }}</span></div>
+        <div class="flex justify-between"><span>X-Frame-Options</span><span class="{{ 'text-green-600' if h.get('X-Frame-Options') else 'text-red-600' }}">{{ 'Present' if h.get('X-Frame-Options') else 'Missing' }}</span></div>
+        <div class="flex justify-between"><span>X-Content-Type-Options</span><span class="{{ 'text-green-600' if h.get('X-Content-Type-Options') else 'text-red-600' }}">{{ 'Present' if h.get('X-Content-Type-Options') else 'Missing' }}</span></div>
+      </div>
+      <pre class="bg-slate-100 p-3 rounded text-xs mt-3 overflow-auto">{{ result.headers | tojson(indent=2) }}</pre>
+    </div>
+  </section>
+
+  <!-- Details list -->
+  <section>
+    <div class="bg-white p-4 rounded shadow">
+      <h2 class="text-lg font-semibold mb-3">Scanned URL details (showing up to {{ result.details | length }})</h2>
+      <div class="space-y-3">
+        {% for item in result.details %}
+          <details class="border rounded">
+            <summary class="px-4 py-3 flex justify-between items-center">
+              <div class="flex-1 text-left">
+                <div class="text-sm text-slate-500 truncate">{{ item.url }}</div>
+              </div>
+              <div class="ml-4 flex gap-3">
+                {% if item.sqli_bool %}
+                  <span class="text-xs font-semibold text-red-700 bg-red-100 px-2 py-1 rounded">SQLi</span>
+                {% endif %}
+                {% if item.xss_bool %}
+                  <span class="text-xs font-semibold text-red-700 bg-red-100 px-2 py-1 rounded">XSS</span>
+                {% endif %}
+              </div>
+            </summary>
+
+            <div class="px-4 py-3 text-sm bg-slate-50">
+              {% if item.error %}
+                <div class="text-rose-600">Error scanning this URL.</div>
+              {% else %}
+                <div class="mb-2"><strong>SQLi result:</strong> {{ item.sqli | tojson }}</div>
+                <div class="mb-2"><strong>XSS result:</strong> {{ item.xss | tojson }}</div>
+              {% endif %}
+              <a class="text-xs text-sky-600 hover:underline" href="{{ item.url }}" target="_blank" rel="noreferrer">Open URL</a>
+            </div>
+          </details>
+        {% endfor %}
+        {% if result.details|length == 0 %}
+          <div class="text-sm text-slate-500">No per-URL details to show.</div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <footer class="mt-8 text-center text-xs text-slate-400">
+    Developed by Obasan Joseph — use only on sites you have permission to test.
+  </footer>
+</div>
+
+<!-- Include Chart script and your standalone charts.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+
+<!-- Minimal JS to show spinner while scanning -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.getElementById("scanForm");
+  const spinner = document.getElementById("spinner");
+  const btnText = document.getElementById("scanBtnText");
+  const btn = document.getElementById("scanBtn");
+
+  if (!form) return;
+  form.addEventListener("submit", () => {
+    spinner.classList.remove("hidden");
+    btnText.textContent = "Scanning...";
+    btn.disabled = true;
+  });
+});
+</script>
+{% endblock %}
+
+</body>
+</html>
